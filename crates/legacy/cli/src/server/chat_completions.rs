@@ -746,6 +746,7 @@ async fn cancel_and_drain(stream: &ChatSessionStream) {
 }
 
 async fn run_blocking(
+    inference_gate: Arc<tokio::sync::Semaphore>,
     session: Arc<Mutex<ChatSession>>,
     messages: Vec<ChatMessage>,
     config: ChatReplyConfig,
@@ -766,6 +767,14 @@ async fn run_blocking(
 
     // Requests serialize on the single session, so a client can disconnect
     // while still queued; generating for it would block everyone behind it.
+    let mut acquire = std::pin::pin!(inference_gate.acquire_owned());
+    let _permit = loop {
+        tokio::select! {
+            permit = &mut acquire => match permit { Ok(permit) => break permit, Err(_) => return },
+            _ = sender.closed() => return,
+            _ = keepalive.tick() => { if sender.send(b"\n".to_vec()).is_err() { return; } },
+        }
+    };
     let mut lock = std::pin::pin!(session.lock());
     let session = loop {
         tokio::select! {
@@ -879,6 +888,7 @@ async fn run_blocking(
 }
 
 async fn run_stream(
+    inference_gate: Arc<tokio::sync::Semaphore>,
     session: Arc<Mutex<ChatSession>>,
     messages: Vec<ChatMessage>,
     config: ChatReplyConfig,
@@ -892,6 +902,10 @@ async fn run_stream(
 ) {
     // Same as the blocking path: don't start generating for a client that
     // disconnected while queued on the session.
+    let _permit = tokio::select! {
+        permit = inference_gate.acquire_owned() => match permit { Ok(permit) => permit, Err(_) => return },
+        _ = sender.closed() => return,
+    };
     let session = tokio::select! {
         session = session.lock() => session,
         () = sender.closed() => {
@@ -1260,8 +1274,20 @@ pub async fn handle_chat_completions(
         let session = Arc::clone(&state.session);
         let (sender, receiver) = mpsc::unbounded_channel::<Event>();
         tokio::spawn(
-            run_stream(session, messages, config, id, model, created, state.prefix_cache, parameter_types, sender, log)
-                .in_current_span(),
+            run_stream(
+                Arc::clone(&state.inference_gate),
+                session,
+                messages,
+                config,
+                id,
+                model,
+                created,
+                state.prefix_cache,
+                parameter_types,
+                sender,
+                log,
+            )
+            .in_current_span(),
         );
         let body: Pin<Box<dyn Stream<Item = Event> + Send>> = Box::pin(UnboundedReceiverStream::new(receiver));
         ChatCompletionResult::Stream(EventStream::from(body))
@@ -1270,6 +1296,7 @@ pub async fn handle_chat_completions(
         let (sender, receiver) = mpsc::unbounded_channel::<Vec<u8>>();
         tokio::spawn(
             run_blocking(
+                Arc::clone(&state.inference_gate),
                 session,
                 messages,
                 config,

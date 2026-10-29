@@ -25,6 +25,7 @@ use crate::{
         ServerState, handle_chat_completions, handle_models,
         log::{self, FileLogger},
         request_info::RequestInfo,
+        systemone::handle_systemone,
     },
 };
 
@@ -187,11 +188,14 @@ pub async fn run_server(
     spinner.finish_with_message(format!("Loaded: {}", resolved.identifier));
 
     let thinking_support = ThinkingSupport::for_model(&resolved);
-    let session =
-        engine.chat(resolved.clone(), ChatConfig::default()).await.context("Failed to create chat session")?;
+    let instance =
+        engine.chat_instance(resolved.clone(), ChatConfig::default()).await.context("Failed to load chat instance")?;
+    let session = engine.chat_with_instance(&instance).await.context("Failed to create chat session")?;
     let model_name = resolved.identifier.clone();
     let state = ServerState {
         model_name: model_name.clone(),
+        instance,
+        inference_gate: Arc::new(tokio::sync::Semaphore::new(1)),
         session: Arc::new(Mutex::new(session)),
         thinking_support,
         prefix_cache,
@@ -202,6 +206,8 @@ pub async fn run_server(
         port,
         address,
         log_level: LogLevel::Off,
+        request_timeout: Some(30),
+        request_timeout_paths: vec!["/v1/systemone".into()],
         ..Config::default()
     };
 
@@ -231,9 +237,13 @@ pub async fn run_server(
 
     let rocket = rocket::custom(config)
         .manage(state)
+        .register(
+            "/v1",
+            rocket::catchers![super::systemone::deadline_exceeded, super::systemone::unsupported_http_version],
+        )
         .attach(RequestLoggingFairing)
         .mount("/", routes![handle_chat_completions, handle_models])
-        .mount("/v1", routes![handle_chat_completions, handle_models]);
+        .mount("/v1", routes![handle_chat_completions, handle_models, handle_systemone]);
 
     if let Err(error) = rocket.launch().await {
         bail!("Server error: {error}");

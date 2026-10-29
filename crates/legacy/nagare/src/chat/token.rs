@@ -64,39 +64,7 @@ impl Session {
         reference: String,
         model: &Model,
     ) -> Result<Self, ChatSessionError> {
-        let encoding_config: Option<EncodingConfig> = model
-            .encoding
-            .as_ref()
-            .map(|value| serde_json::from_str::<EncodingConfig>(value.json.as_str()))
-            .transpose()
-            .map_err(|error| ChatSessionError::Loading {
-                message: format!("Failed to parse encoding config: {error}"),
-            })?;
-
-        let tokenizer_location = TokenizerLocation::Directory {
-            path: reference,
-            name: None,
-        };
-
-        let encoding = match encoding_config {
-            Some(EncodingConfig::Hanashi {
-                config,
-            }) => HanashiEncodingImpl::new(config, instance.tokenizer()).map(Encoding::Hanashi).map_err(|err| {
-                ChatSessionError::Loading {
-                    message: format!("can not create harmony encoding: {err}"),
-                }
-            }),
-            Some(EncodingConfig::Harmony {
-                config,
-            }) => HarmonyEncodingImpl::new(config, tokenizer_location).map(Encoding::Harmony).map_err(|err| {
-                ChatSessionError::Loading {
-                    message: format!("can not create harmony encoding: {err}"),
-                }
-            }),
-            None => Err(ChatSessionError::Loading {
-                message: "can not get encoding config".to_string(),
-            }),
-        }?;
+        let encoding = create_encoding(&instance, &reference, model)?;
         let state = instance.state().await.map_err(|error| ChatSessionError::Backend {
             message: error.to_string(),
         })?;
@@ -550,4 +518,44 @@ fn calculate_rate(
     }
 
     Some((tokens - 1) as f64 / duration.as_secs_f64())
+}
+
+pub(crate) fn create_encoding(
+    instance: &Arc<dyn ChatTokenBackendInstance>,
+    reference: &str,
+    model: &Model,
+) -> Result<Encoding, ChatSessionError> {
+    let encoding_config: Option<EncodingConfig> = model
+        .encoding
+        .as_ref()
+        .map(|value| serde_json::from_str::<EncodingConfig>(value.json.as_str()))
+        .transpose()
+        .map_err(|error| ChatSessionError::Loading {
+            message: format!("Failed to parse encoding config: {error}"),
+        })?;
+
+    let tokenizer_location = TokenizerLocation::Directory {
+        path: reference.to_string(),
+        name: None,
+    };
+
+    match encoding_config {
+        Some(EncodingConfig::Hanashi {
+            config,
+        }) => HanashiEncodingImpl::new(config, instance.tokenizer()).map(Encoding::Hanashi).map_err(|err| {
+            ChatSessionError::Loading {
+                message: format!("can not create harmony encoding: {err}"),
+            }
+        }),
+        Some(EncodingConfig::Harmony {
+            config,
+        }) => HarmonyEncodingImpl::new(config, tokenizer_location).map(Encoding::Harmony).map_err(|err| {
+            ChatSessionError::Loading {
+                message: format!("can not create harmony encoding: {err}"),
+            }
+        }),
+        None => Err(ChatSessionError::Loading {
+            message: "can not get encoding config".to_string(),
+        }),
+    }
 }

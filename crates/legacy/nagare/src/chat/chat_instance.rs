@@ -77,6 +77,10 @@ impl ChatInstance {
     }
 }
 
+#[cfg(test)]
+#[path = "../../unit/chat/decision_instance_test.rs"]
+mod decision_tests;
+
 #[bindings::export(Implementation)]
 impl ChatInstance {
     #[bindings::export(Method(Getter))]

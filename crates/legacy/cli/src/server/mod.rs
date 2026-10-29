@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "../../unit/server/transport_test.rs"]
+mod transport_tests;
+
 mod log;
 mod request_info;
 
@@ -7,6 +11,7 @@ pub mod models;
 pub mod request_log;
 pub mod runner;
 pub mod state;
+pub mod systemone;
 
 pub use chat_completions::handle_chat_completions;
 pub use models::handle_models;

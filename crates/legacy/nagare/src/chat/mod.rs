@@ -3,6 +3,7 @@ mod bindings_napi;
 #[cfg(feature = "bindings-pyo3")]
 mod bindings_pyo3;
 mod chat_instance;
+pub mod decision;
 mod error;
 pub mod message;
 pub mod token;

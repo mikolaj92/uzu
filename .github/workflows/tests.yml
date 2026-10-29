@@ -130,6 +130,27 @@ jobs:
             ${{ matrix.tests != 'kernels' && matrix.crates && format('-p {0}', join(matrix.crates, ' -p ')) || '' }} \
             ${{ matrix.tests == 'kernels' && '-p uzu-engine backends::common::kernel::tests --lib' || '' }}
 
+  systemone-liquid:
+    name: SystemOne Liquid (Metal)
+    runs-on: prefect-github-actions
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      - name: Prepare pinned Liquid fixture
+        run: python3 scripts/systemone-acceptance/fixture.py --model "$RUNNER_TEMP/systemone-liquid"
+      - name: Accept native scoring, HTTP and official SDK together
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: sh scripts/verify-systemone.sh --model "$RUNNER_TEMP/systemone-liquid" --backend metal --output "$RUNNER_TEMP/systemone-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: systemone-liquid-evidence
+          path: ${{ runner.temp }}/systemone-evidence
+          if-no-files-found: warn
+
   validate-bindings:
     name: validate-bindings
     runs-on: prefect-github-actions

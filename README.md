@@ -16,6 +16,10 @@ A high-performance inference engine for AI models. It allows you to deploy AI di
 - Utilizes unified memory on Apple devices
 - [Broad model support](https://trymirai.com/local-models)
 
+## Typed decisions
+
+The CLI supports [SystemOne decisions](docs/systemone.md) with the loaded chat model, without text generation or a second weight load.
+
 ## Quick Start
 
 

@@ -27,6 +27,11 @@ members = [
     "crates/legacy/kiban",
 ]
 resolver = "3"
+exclude = ["vendor/rocket", "vendor/hyper"]
+
+[patch.crates-io]
+rocket = { path = "vendor/rocket" }
+hyper = { path = "vendor/hyper" }
 
 [workspace.package]
 edition = "2024"
